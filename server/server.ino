@@ -19,11 +19,10 @@
 
 #include <Servo.h>
 #include <Adafruit_NeoPixel.h>
+#include <EEPROM.h>
 
-// IMU
-#include <I2Cdev.h>
-#include <MPU6050.h>
-#include <Wire.h>
+#define LEFT_SERVO_CAL_ADDR 0
+#define RIGHT_SERVO_CAL_ADDR 1
 
 #define SERVER_BUFFER_BIG 256
 #define SERVER_BUFFER_SMALL 32
@@ -59,7 +58,7 @@
 #define ACTION_PIXEL 6
 #define ACTION_SENSE_LIGHT 7
 #define ACTION_LED 8
-#define ACTION_IMU 9
+#define ACTION_CALIBRATE_SERVOS 33
 
 #define SERVER_RESPONSE_OK(content) server_set_response(content)
 #define SERVER_RESPONSE_BAD() Serial.print(server_response_template_bad)
@@ -105,15 +104,13 @@ Servo move_servo_left;
 Servo move_servo_right;
 bool servo_left_attached;
 bool servo_right_attached;
+int servo_left_min;
+int servo_left_max;
+int servo_right_min;
+int servo_right_max;
 
 long see_distance;
 float see_duration;
-
-MPU6050 accelgyro;
-int16_t ax, ay, az;
-int16_t gx, gy, gz;
-int16_t temperature;
-char enable_imu = 0;
 
 void setup()
 {
@@ -121,8 +118,6 @@ void setup()
   blink_last_rate = 0;
   blink_is_off = 1;
   blink_last_changed = millis();
-  servo_left_attached = false;
-  servo_right_attached = false;
   pinMode(LED_PIN, OUTPUT);
   pinMode(SPEAKER_PIN, OUTPUT);
   pinMode(SEE_TRIGGER_PIN, OUTPUT);
@@ -133,10 +128,24 @@ void setup()
   pixel.setPixelColor(0, pixel.Color(0,0,0));
   pixel.show();
 
-  // IMU
-  Wire.begin();
-  accelgyro.initialize();
-  enable_imu = accelgyro.testConnection() ? 1 : 0;
+  // Servo
+  servo_left_attached = false;
+  servo_right_attached = false;
+  // Read stored calibration for the servos
+  servo_left_max = EEPROM.read(LEFT_SERVO_CAL_ADDR);
+  servo_right_min = EEPROM.read(RIGHT_SERVO_CAL_ADDR);
+  servo_left_min = 0;
+  servo_right_max = 180;
+
+  // If no value has been stored previously, use the max value
+  if(servo_left_max == 0){
+    servo_left_min = 0;
+    servo_left_max = 180;
+  }
+  if(servo_right_max == 0){
+    servo_right_min = 0;
+    servo_right_max = 180;
+  }
 
   server_input_index = 0;
   Serial.begin(SERVER_BAUD);
@@ -251,7 +260,7 @@ void loop()
               move_servo_left.attach(SERVO_LEFT_PIN);
               servo_left_attached = true;
             }
-            int tmp = map(request_params.value1, -100, 100, 0, 180);
+            int tmp = map(request_params.value1, -100, 100, servo_left_min, servo_left_max);
             move_servo_left.write(constrain(tmp, 0, 180));
           }
 
@@ -263,7 +272,7 @@ void loop()
               move_servo_right.attach(SERVO_RIGHT_PIN);
               servo_right_attached = true;
             }
-            int tmp = map(request_params.value2, 100, -100, 0, 180);
+            int tmp = map(request_params.value2, 100, -100, servo_right_min, servo_right_max);
             move_servo_right.write(constrain(tmp, 0, 180));
           }
 
@@ -313,15 +322,18 @@ void loop()
           SERVER_RESPONSE_OK("");
           break;
         }
-        case ACTION_IMU: {
-          if(enable_imu){
-            accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-            temperature = accelgyro.getTemperature() / 34.00 + 365.3; // Magic numbre from datasheet (result in degrees C * 10 to avoid float)
-          }else{
-            temperature = ax = ay = az = gx = gy = gz = 0;
+        case ACTION_CALIBRATE_SERVOS: {
+          if(request_params.value1 > 1 && request_params.value1 <= 100 &&\
+             request_params.value2 > 1 && request_params.value2 <= 100){
+
+            int tmp = map(request_params.value1, 0, 100, 0, 180);
+            EEPROM.write(LEFT_SERVO_CAL_ADDR, tmp);
+
+            tmp = map(request_params.value2, 0, 100, 0, 180);
+            EEPROM.write(RIGHT_SERVO_CAL_ADDR, tmp);
           }
-          sprintf(server_response_content, "[%d, %d, %d, %d, %d, %d, %d]", ax, ay, ax, gx, gy, gz, temperature);
-          SERVER_RESPONSE_OK(server_response_content);
+
+          SERVER_RESPONSE_OK("");
           break;
         }
         default: {
