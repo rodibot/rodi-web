@@ -20,17 +20,13 @@
 #include <Servo.h>
 #include <Adafruit_NeoPixel.h>
 
-// IMU
-#include <I2Cdev.h>
-#include <MPU6050.h>
-#include <Wire.h>
-
 #define SERVER_BUFFER_BIG 256
 #define SERVER_BUFFER_SMALL 32
 
 #define SENSOR_RIGHT_PIN A6
 #define SENSOR_LEFT_PIN A1
 #define SENSOR_LIGHT_PIN A7
+#define SENSOR_BATTERY_PIN A2
 
 #define LED_PIN 13
 #define PIXEL_PIN 11
@@ -50,6 +46,9 @@
 
 #define SERVER_BAUD 57600
 
+// 3.43 V is the minimum voltage at which the distance sensor works
+#define LOW_BATTERY 3660 // mV - analog read is 610
+
 #define ACTION_UNKNOWN 0
 #define ACTION_BLINK 1
 #define ACTION_SENSE 2
@@ -59,7 +58,7 @@
 #define ACTION_PIXEL 6
 #define ACTION_SENSE_LIGHT 7
 #define ACTION_LED 8
-#define ACTION_IMU 9
+#define ACTION_BATTERY 9
 
 #define SERVER_RESPONSE_OK(content) server_set_response(content)
 #define SERVER_RESPONSE_BAD() Serial.print(server_response_template_bad)
@@ -109,11 +108,9 @@ bool servo_right_attached;
 long see_distance;
 float see_duration;
 
-MPU6050 accelgyro;
-int16_t ax, ay, az;
-int16_t gx, gy, gz;
-int16_t temperature;
-char enable_imu = 0;
+int battery_last_measured;
+int battery_last_rate;
+int battery_voltage;
 
 void setup()
 {
@@ -132,11 +129,6 @@ void setup()
   pixel.begin();
   pixel.setPixelColor(0, pixel.Color(0,0,0));
   pixel.show();
-
-  // IMU
-  Wire.begin();
-  accelgyro.initialize();
-  enable_imu = accelgyro.testConnection() ? 1 : 0;
 
   server_input_index = 0;
   Serial.begin(SERVER_BAUD);
@@ -198,6 +190,20 @@ void blink_loop(){
       }
 
     }
+}
+
+void battery_loop(){
+  long now = millis();
+  if ((now - battery_last_measured) > battery_last_rate) {
+    battery_voltage = analogRead(SENSOR_BATTERY_PIN) * 6; // 6 is aprox (2 * 3300 / 1023);
+    if (battery_voltage < LOW_BATTERY){
+      digitalWrite(LED_PIN, HIGH);
+      blink_is_off = 1;
+    }
+    else{
+      digitalWrite(LED_PIN, LOW);
+    }
+  }
 }
 
 void loop()
@@ -313,23 +319,17 @@ void loop()
           SERVER_RESPONSE_OK("");
           break;
         }
-        case ACTION_IMU: {
-          if(enable_imu){
-            accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-            temperature = accelgyro.getTemperature() / 34.00 + 365.3; // Magic numbre from datasheet (result in degrees C * 10 to avoid float)
-          }else{
-            temperature = ax = ay = az = gx = gy = gz = 0;
-          }
-          sprintf(server_response_content, "[%d, %d, %d, %d, %d, %d, %d]", ax, ay, ax, gx, gy, gz, temperature);
+        case ACTION_BATTERY: {
+          int sensorBatteryVoltage = analogRead(SENSOR_BATTERY_PIN) * 6; // 6 is aprox (2 * 3300 / 1023);
+
+          sprintf(server_response_content, "%d", sensorBatteryVoltage);
           SERVER_RESPONSE_OK(server_response_content);
           break;
-        }
-        default: {
-          SERVER_RESPONSE_BAD();
         }
       }
     }
   }
 
+  battery_loop();
   blink_loop();
 }

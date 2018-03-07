@@ -59,7 +59,7 @@ API
 
     ie.,
     ```
-    curl --get http://192.168.4.1:1234/4/31/250/ // blink each second
+    curl --get http://192.168.4.1:1234/4/31/250/ // Play a note for 250ms
     ```
 
     Notes can be found in http://arduino.cc/en/tutorial/tone
@@ -105,7 +105,7 @@ API
 
     ie.,
     ```
-    $curl --get http://192.168.4.1:1234/7/
+    curl --get http://192.168.4.1:1234/7/
     66
     ```
 
@@ -123,27 +123,18 @@ API
     curl --get http://192.168.4.1:1234/8/1/    // turns the onbboard led on
     ```
 
-* IMU
+* Battery
 
     ```
     GET /9/
     ```
 
-    Returns a JSON formatted array of seven integers, for IMU sensor values.
-
-    All values are from in the range [-32768:32767]:
-        - X-axis acceleration (~16384 = 1g)
-        - Y-axis acceleration (~16384 = 1g)
-        - Z-axis acceleration (~16384 = 1g)
-        - X-axis angular velocity
-        - Y-axis angular velocity
-        - Z-axis angular velocity
-        - Temperature       (degrees C * 10)
+    Returns a JSON integer, for battery charge value in miliVolts.
 
     ie.,
     ```
     $curl --get http://192.168.4.1:1234/9/
-    [-268, 8, -268, -371, -449, -51, 284]
+    3700
     ```
 
 Authors
